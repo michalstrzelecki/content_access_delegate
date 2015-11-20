@@ -1,0 +1,116 @@
+<?php
+
+/**
+ * Implements hook_views_api().
+ */
+function content_access_delegate_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'content_access_delegate') . '/views',
+  );
+}
+
+/**
+ * Implements hook_action_info().
+ */
+function content_access_delegate_action_info() {  
+  return array(
+    'content_access_delegate_grants_action' => array(
+      'type' => 'node',
+      'label' => t('Delegate node access grants'),
+      'behavior' => array('changes_property'),
+      'configurable' => FALSE,
+      'vbo_configurable' => TRUE,
+      'triggers' => array('any'),
+      'pass rows' => TRUE,
+      'permissions' => array('grant content access', 'grant own content access'),
+    ),
+  );
+}
+
+/**
+ * Action function for content_access_delegate_delegate_grants_action().
+ */
+function content_access_delegate_grants_action($node, $context) {
+
+  $default_operations = array('view', 'view_own', 'update', 'update_own', 'delete', 'delete_own');
+  $dest_role = user_role_load($context['dest_role']);
+  $source_role = user_role_load($context['source_role']);
+  $settings = array();
+  
+  foreach ($default_operations as $op) {
+    $rids = content_access_get_rids_per_node_op($op, $node);
+
+    // If destination role already has this grant skip and only show message.
+    if (in_array($source_role->rid, $rids) && !in_array($dest_role->rid, $rids)) {
+      // Changing existing rid to destination rid, so only existing grants have been delegated.
+      $rids = str_replace($source_role->rid, $dest_role->rid, $rids);
+
+      drupal_set_message(t("Role @source_role_name has been delegate @op grant on @node_title (nid: @nid) to role @dest_role_name.", array(
+        '@node_title' => $node->title,
+        '@nid' => $node->nid,
+        '@source_role_name' => $source_role->name,
+        '@dest_role_name' => $dest_role->name,
+        '@op' => $op,
+      )), 'status');
+    } elseif (in_array($source_role->rid, $rids) && in_array($dest_role->rid, $rids)) {
+      // Remove source role from $rids becouse they arn't remove, it was only replaced so far.
+      $rids = array_filter(str_replace($source_role->rid, '', $rids));
+      
+      drupal_set_message(t("Role @dest_role_name can @op @node_title (nid: @nid) already.", array(
+        '@node_title' => $node->title,
+        '@nid' => $node->nid,
+        '@dest_role_name' => $dest_role->name,
+        '@op' => $op,
+      )), 'status');
+    }
+
+    $settings[$op] = $rids;
+  }
+
+  // Save settings to content_access table.
+  content_access_save_per_node_settings($node, $settings);
+  
+  // Apply new settings.
+  node_access_acquire_grants($node);
+}
+
+/**
+ * Generates settings form for content_access_delegate_grants_action().
+ */
+function content_access_delegate_grants_action_form($settings, &$form_state) {
+  $roles = user_roles(TRUE);
+  unset($roles[DRUPAL_AUTHENTICATED_RID]);
+  unset($roles[3]);
+  
+  $form = array();
+  $form['dest_role'] = array(
+    '#type' => 'select', 
+    '#title' => t('Choose destination role.'),
+    '#description' => t('Choose role which will get grants.'),
+    '#required' => TRUE,
+    '#options' => $roles,
+    '#default_value' => !empty($context['dest_role']) ? $context['dest_role'] : '',
+  );
+
+  return $form;
+}
+
+/**
+ * Validates content_access_delegate_grants_action().
+ */
+function content_access_delegate_grants_action_validate($form, $form_state) {
+  if ($form_state['build_info']['args'][0]->exposed_input['gid'] == $form['dest_role']['#value']) {
+    form_set_error('dest_role', t('Please, choose different role for source role and destination role.'));
+  }
+}
+
+/**
+ * Submit handler for content_access_delegate_grants_action().
+ */
+function content_access_delegate_grants_action_submit($form, $form_state) {
+  return array(
+    'source_role' => $form_state['build_info']['args'][0]->exposed_input['gid'],
+    'dest_role' => $form_state['values']['dest_role'],
+  );
+}
