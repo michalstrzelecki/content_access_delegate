@@ -1,5 +1,5 @@
 name = Content Access Delegate
-description = Allows delegating node grants to another role. Created by <a href="mailto:m_strzelecki@interia.pl?Subject=Content%20Access%20Delegate">Micha≥ Strzelecki</a>.<em>
+description = Allows delegating node grants to another role. Created by <a href="mailto:m_strzelecki@interia.pl?Subject=Content%20Access%20Delegate">Micha≈Ç Strzelecki</a>.<em>
 core = 7.x
 package = Access control
 dependencies[] = views
